@@ -6,13 +6,88 @@ const moment = require('moment');
 
 class WildBerriesParser {
     constructor() {
-        this.headers = {
-            'Accept': '*/*',
-            'User-Agent': 'Chrome/51.0.2704.103 Safari/537.36'
-        };
+        // Расширенный список User-Agent
+        this.userAgents = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/120.0',
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
+            'Mozilla/5.0 (Linux; Android 10; SM-A505FN) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36'
+        ];
+
+        this.currentUserAgentIndex = 0;
+        this.requestDelay = 2500; // Базовая задержка
+        this.maxRetries = 5;      // Увеличенное количество попыток
+        this.failedRequests = 0;  // Счетчик неудачных запросов
+
         this.runDate = moment().format('YYYY-MM-DD');
         this.productCards = [];
         this.directory = __dirname;
+    }
+
+    getRandomDelay(min = 1500, max = 4000) {
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    getNextUserAgent() {
+        this.currentUserAgentIndex = (this.currentUserAgentIndex + 1) % this.userAgents.length;
+        return this.userAgents[this.currentUserAgentIndex];
+    }
+
+    getHeaders() {
+        return {
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+            'User-Agent': this.getNextUserAgent(),
+            'Referer': 'https://www.wildberries.ru/',
+            'Origin': 'https://www.wildberries.ru',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+        };
+    }
+
+    async makeRequest(url, retryCount = 0) {
+        try {
+            const response = await axios.get(url, {
+                headers: this.getHeaders(),
+                timeout: 8000
+            });
+
+            // Сброс счетчика при успешном запросе
+            this.failedRequests = 0;
+
+            // Адаптивная задержка при 429
+            if (response.status === 429) {
+                this.requestDelay = Math.min(this.requestDelay + 1000, 10000); // Макс 10 сек
+                console.warn(`[429] Увеличиваю задержку до ${this.requestDelay}мс`);
+                throw new Error('Too Many Requests');
+            }
+
+            // Случайная задержка между запросами
+            const delay = this.getRandomDelay();
+            await new Promise(resolve => setTimeout(resolve, delay));
+
+            return response.data;
+
+        } catch (error) {
+            this.failedRequests++;
+
+            // Аварийное увеличение задержки при нескольких ошибках подряд
+            if (this.failedRequests >= 3) {
+                this.requestDelay = Math.min(this.requestDelay + 2000, 15000);
+                console.warn(`Много ошибок! Новая задержка: ${this.requestDelay}мс`);
+            }
+
+            if (retryCount < this.maxRetries) {
+                const retryDelay = this.requestDelay * (retryCount + 1);
+                console.log(`[Повтор ${retryCount + 1}] Через ${retryDelay}мс...`);
+                await new Promise(resolve => setTimeout(resolve, retryDelay));
+                return this.makeRequest(url, retryCount + 1);
+            }
+
+            console.error(`Запрос провален после ${this.maxRetries} попыток: ${error.message}`);
+            return null;
+        }
     }
 
     async downloadCurrentCatalogue() {
@@ -20,8 +95,10 @@ class WildBerriesParser {
         if (!fs.existsSync(localCataloguePath) ||
             moment(fs.statSync(localCataloguePath).mtime).isBefore(moment(), 'day')) {
             const url = 'https://static-basket-01.wb.ru/vol0/data/main-menu-ru-ru-v2.json';
-            const response = await axios.get(url, { headers: this.headers });
-            fs.writeFileSync(localCataloguePath, JSON.stringify(response.data, null, 2), 'utf-8');
+            const data = await this.makeRequest(url);
+            if (data) {
+                fs.writeFileSync(localCataloguePath, JSON.stringify(data, null, 2), 'utf-8');
+            }
         }
         return localCataloguePath;
     }
@@ -56,7 +133,8 @@ class WildBerriesParser {
     }
 
     async getProductsOnPage(pageData) {
-        return pageData.data.products.map(item => ({
+        if (!pageData || !pageData.products) return [];
+        return pageData.products.map(item => ({
             'Ссылка': `https://www.wildberries.ru/catalog/${item.id}/detail.aspx`,
             'Артикул': item.id,
             'Наименование': item.name,
@@ -71,60 +149,83 @@ class WildBerriesParser {
 
     async addDataFromPage(url) {
         try {
-            const response = await axios.get(url, { headers: this.headers });
-            if (response.status !== 200) return true;
-            const productsOnPage = await this.getProductsOnPage(response.data);
+            const pageData = await this.makeRequest(url);
+            if (!pageData) return true;
+
+            const productsOnPage = await this.getProductsOnPage(pageData.data);
             if (productsOnPage.length > 0) {
                 this.productCards.push(...productsOnPage);
-                console.log(`Добавлено товаров: ${productsOnPage.length}`);
-            } else {
-                console.log('Загрузка товаров завершена');
-                return true;
+                console.log(`Добавлено ${productsOnPage.length} товаров (Всего: ${this.productCards.length})`);
+                return false;
             }
+            console.log('Товары на странице отсутствуют');
+            return true;
         } catch (error) {
-            console.error(`Ошибка запроса: ${error.message}`);
+            console.error(`Ошибка при обработке страницы: ${error.message}`);
             return true;
         }
     }
 
     async getAllProductsInCategory(categoryData) {
         for (let page = 1; page <= 100; page++) {
-            console.log(`Загружаю товары со страницы ${page}`);
+            console.log(`Страница ${page}...`);
             const url = `https://catalog.wb.ru/catalog/${categoryData.shard}/catalog?appType=1&${categoryData.query}&curr=rub&dest=-1257786&page=${page}&sort=popular&spp=24`;
-            if (await this.addDataFromPage(url)) break;
-            await new Promise(resolve => setTimeout(resolve, 1500));
+
+            if (await this.addDataFromPage(url)) {
+                console.log('Достигнут конец категории');
+                break;
+            }
+
+            // Динамическая задержка с прогрессией
+            const dynamicDelay = Math.min(
+                this.requestDelay + (page * 100),
+                8000
+            );
+            await new Promise(resolve => setTimeout(resolve, dynamicDelay));
         }
     }
 
     saveToExcel(fileName) {
         const workbook = xlsx.utils.book_new();
         const worksheet = xlsx.utils.json_to_sheet(this.productCards);
-        xlsx.utils.book_append_sheet(workbook, worksheet, 'data');
+        xlsx.utils.book_append_sheet(workbook, worksheet, 'Товары');
         const resultPath = path.join(this.directory, `${fileName}_${this.runDate}.xlsx`);
         xlsx.writeFile(workbook, resultPath);
         return resultPath;
     }
 
-    async runParser() {
-        const mode = parseInt(await this.askUser("Введите 1 для парсинга категории целиком, 2 — по ключевым словам: "));
-        if (mode === 1) {
-            const localCataloguePath = await this.downloadCurrentCatalogue();
-            console.log(`Каталог сохранен: ${localCataloguePath}`);
-            const processedCatalogue = this.processCatalogue(localCataloguePath);
-            const inputCategory = await this.askUser("Введите название категории или ссылку: ");
-            const categoryData = this.extractCategoryData(processedCatalogue, inputCategory);
-            if (!categoryData) return console.log("Категория не найдена");
-            console.log(`Найдена категория: ${categoryData.name}`);
-            await this.getAllProductsInCategory(categoryData);
-            console.log(`Данные сохранены в ${this.saveToExcel(categoryData.name)}`);
-        }
-    }
-
-    askUser(question) {
+    async askUser(question) {
         return new Promise(resolve => {
             process.stdout.write(question);
             process.stdin.once('data', data => resolve(data.toString().trim()));
         });
+    }
+
+    async runParser() {
+        try {
+            const mode = parseInt(await this.askUser("Выберите режим (1 - категория, 2 - ключевые слова): "));
+            if (mode === 1) {
+                const localCataloguePath = await this.downloadCurrentCatalogue();
+                const processedCatalogue = this.processCatalogue(localCataloguePath);
+                const inputCategory = await this.askUser("Введите название/ссылку категории: ");
+                const categoryData = this.extractCategoryData(processedCatalogue, inputCategory);
+
+                if (!categoryData) {
+                    console.log("Категория не найдена. Доступные категории:");
+                    console.log(processedCatalogue.slice(0, 5).map(c => c.name).join('\n'));
+                    return;
+                }
+
+                console.log(`Парсинг категории: ${categoryData.name}`);
+                await this.getAllProductsInCategory(categoryData);
+                const savedPath = this.saveToExcel(categoryData.name);
+                console.log(`Готово! Результаты сохранены в: ${savedPath}`);
+            }
+        } catch (error) {
+            console.error(`Фатальная ошибка: ${error.message}`);
+        } finally {
+            process.exit();
+        }
     }
 }
 
