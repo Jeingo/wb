@@ -1,7 +1,7 @@
 const fs = require('fs');
 const axios = require('axios');
 const path = require('path');
-const xlsx = require('xlsx');
+const sqlite3 = require('sqlite3').verbose();
 const moment = require('moment');
 
 class WildBerriesParser {
@@ -23,6 +23,31 @@ class WildBerriesParser {
         this.runDate = moment().format('YYYY-MM-DD');
         this.productCards = [];
         this.directory = __dirname;
+
+        this.db = new sqlite3.Database(path.join(this.directory, 'wildberries.db'), (err) => {
+            if (err) {
+                console.error('Ошибка при открытии базы данных:', err.message);
+            } else {
+                console.log('Подключение к базе данных SQLite успешно');
+            }
+        });
+        this.initDatabase();
+    }
+
+    initDatabase() {
+        const createTableQuery = `CREATE TABLE IF NOT EXISTS products (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            link TEXT,
+            article INTEGER,
+            name TEXT,
+            brand TEXT,
+            brand_id INTEGER,
+            price INTEGER,
+            discount_price INTEGER,
+            rating REAL,
+            reviews INTEGER
+        )`;
+        this.db.run(createTableQuery);
     }
 
     getRandomDelay(min = 1500, max = 4000) {
@@ -130,16 +155,38 @@ class WildBerriesParser {
     async getProductsOnPage(pageData) {
         if (!pageData || !pageData.products) return [];
         return pageData.products.map((item) => ({
-            Ссылка: `https://www.wildberries.ru/catalog/${item.id}/detail.aspx`,
-            Артикул: item.id,
-            Наименование: item.name,
-            Бренд: item.brand,
-            'ID бренда': item.brandId,
-            Цена: Math.round(item.priceU / 100),
-            'Цена со скидкой': Math.round(item.salePriceU / 100),
-            Рейтинг: item.rating,
-            Отзывы: item.feedbacks,
+            link: `https://www.wildberries.ru/catalog/${item.id}/detail.aspx`,
+            article: item.id,
+            name: item.name,
+            brand: item.brand,
+            brand_id: item.brandId,
+            price: Math.round(item.priceU / 100),
+            discount_price: Math.round(item.salePriceU / 100),
+            rating: item.rating,
+            reviews: item.feedbacks,
         }));
+    }
+
+    saveToDatabase(products) {
+        const insertQuery = `INSERT INTO products (link, article, name, brand, brand_id, price, discount_price, rating, reviews)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+        this.db.serialize(() => {
+            const stmt = this.db.prepare(insertQuery);
+            for (const product of products) {
+                stmt.run(
+                    product.link,
+                    product.article,
+                    product.name,
+                    product.brand,
+                    product.brand_id,
+                    product.price,
+                    product.discount_price,
+                    product.rating,
+                    product.reviews,
+                );
+            }
+            stmt.finalize();
+        });
     }
 
     async addDataFromPage(url) {
@@ -149,10 +196,8 @@ class WildBerriesParser {
 
             const productsOnPage = await this.getProductsOnPage(pageData.data);
             if (productsOnPage.length > 0) {
-                this.productCards.push(...productsOnPage);
-                console.log(
-                    `Добавлено ${productsOnPage.length} товаров (Всего: ${this.productCards.length})`,
-                );
+                this.saveToDatabase(productsOnPage);
+                console.log(`Добавлено ${productsOnPage.length} товаров в базу данных`);
                 return false;
             }
             console.log('Товары на странице отсутствуют');
@@ -191,25 +236,25 @@ class WildBerriesParser {
     async runParser() {
         try {
             const startTime = Date.now();
-
             const localCataloguePath = await this.downloadCurrentCatalogue();
             const processedCatalogue = this.processCatalogue(localCataloguePath);
 
             console.log(`Начинаю парсинг всех категорий (${processedCatalogue.length})...`);
 
-            for (const categoryData of processedCatalogue) {
-                console.log(`Парсинг категории: ${categoryData.name}`);
-                await this.getAllProductsInCategory(categoryData);
-            }
+            await this.getAllProductsInCategory(processedCatalogue[0]);
 
-            const savedPath = this.saveToExcel('all_categories');
-            console.log(`Готово! Результаты сохранены в: ${savedPath}`);
+            // for (const categoryData of processedCatalogue) {
+            //     console.log(`Парсинг категории: ${categoryData.name}`);
+            //     await this.getAllProductsInCategory(categoryData);
+            // }
 
+            console.log(`Готово! Данные сохранены в SQLite.`);
             const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
             fs.appendFileSync('parsing_time.log', `Парсинг завершён за ${totalTime} секунд\n`);
         } catch (error) {
             console.error(`Фатальная ошибка: ${error.message}`);
         } finally {
+            this.db.close();
             process.exit();
         }
     }
