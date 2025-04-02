@@ -12,13 +12,13 @@ class WildBerriesParser {
             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/120.0',
             'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
-            'Mozilla/5.0 (Linux; Android 10; SM-A505FN) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36'
+            'Mozilla/5.0 (Linux; Android 10; SM-A505FN) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
         ];
 
         this.currentUserAgentIndex = 0;
         this.requestDelay = 2500; // Базовая задержка
-        this.maxRetries = 5;      // Увеличенное количество попыток
-        this.failedRequests = 0;  // Счетчик неудачных запросов
+        this.maxRetries = 5; // Увеличенное количество попыток
+        this.failedRequests = 0; // Счетчик неудачных запросов
 
         this.runDate = moment().format('YYYY-MM-DD');
         this.productCards = [];
@@ -36,13 +36,13 @@ class WildBerriesParser {
 
     getHeaders() {
         return {
-            'Accept': 'application/json, text/plain, */*',
+            Accept: 'application/json, text/plain, */*',
             'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
             'User-Agent': this.getNextUserAgent(),
-            'Referer': 'https://www.wildberries.ru/',
-            'Origin': 'https://www.wildberries.ru',
+            Referer: 'https://www.wildberries.ru/',
+            Origin: 'https://www.wildberries.ru',
             'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
+            Pragma: 'no-cache',
         };
     }
 
@@ -50,7 +50,7 @@ class WildBerriesParser {
         try {
             const response = await axios.get(url, {
                 headers: this.getHeaders(),
-                timeout: 8000
+                timeout: 8000,
             });
 
             // Сброс счетчика при успешном запросе
@@ -65,10 +65,9 @@ class WildBerriesParser {
 
             // Случайная задержка между запросами
             const delay = this.getRandomDelay();
-            await new Promise(resolve => setTimeout(resolve, delay));
+            await new Promise((resolve) => setTimeout(resolve, delay));
 
             return response.data;
-
         } catch (error) {
             this.failedRequests++;
 
@@ -81,7 +80,7 @@ class WildBerriesParser {
             if (retryCount < this.maxRetries) {
                 const retryDelay = this.requestDelay * (retryCount + 1);
                 console.log(`[Повтор ${retryCount + 1}] Через ${retryDelay}мс...`);
-                await new Promise(resolve => setTimeout(resolve, retryDelay));
+                await new Promise((resolve) => setTimeout(resolve, retryDelay));
                 return this.makeRequest(url, retryCount + 1);
             }
 
@@ -92,8 +91,10 @@ class WildBerriesParser {
 
     async downloadCurrentCatalogue() {
         const localCataloguePath = path.join(this.directory, 'wb_catalogue.json');
-        if (!fs.existsSync(localCataloguePath) ||
-            moment(fs.statSync(localCataloguePath).mtime).isBefore(moment(), 'day')) {
+        if (
+            !fs.existsSync(localCataloguePath) ||
+            moment(fs.statSync(localCataloguePath).mtime).isBefore(moment(), 'day')
+        ) {
             const url = 'https://static-basket-01.wb.ru/vol0/data/main-menu-ru-ru-v2.json';
             const data = await this.makeRequest(url);
             if (data) {
@@ -110,7 +111,7 @@ class WildBerriesParser {
                     name: category.name,
                     url: category.url,
                     shard: category.shard,
-                    query: category.query
+                    query: category.query,
                 });
             }
             if (category.childs) {
@@ -127,23 +128,23 @@ class WildBerriesParser {
     }
 
     extractCategoryData(catalogue, userInput) {
-        return catalogue.find(category =>
-            userInput.includes(category.url) || userInput === category.name
+        return catalogue.find(
+            (category) => userInput.includes(category.url) || userInput === category.name,
         );
     }
 
     async getProductsOnPage(pageData) {
         if (!pageData || !pageData.products) return [];
-        return pageData.products.map(item => ({
-            'Ссылка': `https://www.wildberries.ru/catalog/${item.id}/detail.aspx`,
-            'Артикул': item.id,
-            'Наименование': item.name,
-            'Бренд': item.brand,
+        return pageData.products.map((item) => ({
+            Ссылка: `https://www.wildberries.ru/catalog/${item.id}/detail.aspx`,
+            Артикул: item.id,
+            Наименование: item.name,
+            Бренд: item.brand,
             'ID бренда': item.brandId,
-            'Цена': Math.round(item.priceU / 100),
+            Цена: Math.round(item.priceU / 100),
             'Цена со скидкой': Math.round(item.salePriceU / 100),
-            'Рейтинг': item.rating,
-            'Отзывы': item.feedbacks
+            Рейтинг: item.rating,
+            Отзывы: item.feedbacks,
         }));
     }
 
@@ -155,7 +156,9 @@ class WildBerriesParser {
             const productsOnPage = await this.getProductsOnPage(pageData.data);
             if (productsOnPage.length > 0) {
                 this.productCards.push(...productsOnPage);
-                console.log(`Добавлено ${productsOnPage.length} товаров (Всего: ${this.productCards.length})`);
+                console.log(
+                    `Добавлено ${productsOnPage.length} товаров (Всего: ${this.productCards.length})`,
+                );
                 return false;
             }
             console.log('Товары на странице отсутствуют');
@@ -177,11 +180,8 @@ class WildBerriesParser {
             }
 
             // Динамическая задержка с прогрессией
-            const dynamicDelay = Math.min(
-                this.requestDelay + (page * 100),
-                8000
-            );
-            await new Promise(resolve => setTimeout(resolve, dynamicDelay));
+            const dynamicDelay = Math.min(this.requestDelay + page * 100, 8000);
+            await new Promise((resolve) => setTimeout(resolve, dynamicDelay));
         }
     }
 
@@ -195,32 +195,34 @@ class WildBerriesParser {
     }
 
     async askUser(question) {
-        return new Promise(resolve => {
+        return new Promise((resolve) => {
             process.stdout.write(question);
-            process.stdin.once('data', data => resolve(data.toString().trim()));
+            process.stdin.once('data', (data) => resolve(data.toString().trim()));
         });
     }
 
     async runParser() {
         try {
-            const mode = parseInt(await this.askUser("Выберите режим (1 - категория, 2 - ключевые слова): "));
-            if (mode === 1) {
-                const localCataloguePath = await this.downloadCurrentCatalogue();
-                const processedCatalogue = this.processCatalogue(localCataloguePath);
-                const inputCategory = await this.askUser("Введите название/ссылку категории: ");
-                const categoryData = this.extractCategoryData(processedCatalogue, inputCategory);
+            const localCataloguePath = await this.downloadCurrentCatalogue();
+            const processedCatalogue = this.processCatalogue(localCataloguePath);
+            const inputCategory = await this.askUser('Введите название/ссылку категории: ');
+            const categoryData = this.extractCategoryData(processedCatalogue, inputCategory);
 
-                if (!categoryData) {
-                    console.log("Категория не найдена. Доступные категории:");
-                    console.log(processedCatalogue.slice(0, 5).map(c => c.name).join('\n'));
-                    return;
-                }
-
-                console.log(`Парсинг категории: ${categoryData.name}`);
-                await this.getAllProductsInCategory(categoryData);
-                const savedPath = this.saveToExcel(categoryData.name);
-                console.log(`Готово! Результаты сохранены в: ${savedPath}`);
+            if (!categoryData) {
+                console.log('Категория не найдена. Доступные категории:');
+                console.log(
+                    processedCatalogue
+                        .slice(0, 5)
+                        .map((c) => c.name)
+                        .join('\n'),
+                );
+                return;
             }
+
+            console.log(`Парсинг категории: ${categoryData.name}`);
+            await this.getAllProductsInCategory(categoryData);
+            const savedPath = this.saveToExcel(categoryData.name);
+            console.log(`Готово! Результаты сохранены в: ${savedPath}`);
         } catch (error) {
             console.error(`Фатальная ошибка: ${error.message}`);
         } finally {
