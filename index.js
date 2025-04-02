@@ -127,12 +127,6 @@ class WildBerriesParser {
         return catalogue;
     }
 
-    extractCategoryData(catalogue, userInput) {
-        return catalogue.find(
-            (category) => userInput.includes(category.url) || userInput === category.name,
-        );
-    }
-
     async getProductsOnPage(pageData) {
         if (!pageData || !pageData.products) return [];
         return pageData.products.map((item) => ({
@@ -194,35 +188,25 @@ class WildBerriesParser {
         return resultPath;
     }
 
-    async askUser(question) {
-        return new Promise((resolve) => {
-            process.stdout.write(question);
-            process.stdin.once('data', (data) => resolve(data.toString().trim()));
-        });
-    }
-
     async runParser() {
         try {
+            const startTime = Date.now();
+
             const localCataloguePath = await this.downloadCurrentCatalogue();
             const processedCatalogue = this.processCatalogue(localCataloguePath);
-            const inputCategory = await this.askUser('Введите название/ссылку категории: ');
-            const categoryData = this.extractCategoryData(processedCatalogue, inputCategory);
 
-            if (!categoryData) {
-                console.log('Категория не найдена. Доступные категории:');
-                console.log(
-                    processedCatalogue
-                        .slice(0, 5)
-                        .map((c) => c.name)
-                        .join('\n'),
-                );
-                return;
+            console.log(`Начинаю парсинг всех категорий (${processedCatalogue.length})...`);
+
+            for (const categoryData of processedCatalogue) {
+                console.log(`Парсинг категории: ${categoryData.name}`);
+                await this.getAllProductsInCategory(categoryData);
             }
 
-            console.log(`Парсинг категории: ${categoryData.name}`);
-            await this.getAllProductsInCategory(categoryData);
-            const savedPath = this.saveToExcel(categoryData.name);
+            const savedPath = this.saveToExcel('all_categories');
             console.log(`Готово! Результаты сохранены в: ${savedPath}`);
+
+            const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
+            fs.appendFileSync('parsing_time.log', `Парсинг завершён за ${totalTime} секунд\n`);
         } catch (error) {
             console.error(`Фатальная ошибка: ${error.message}`);
         } finally {
