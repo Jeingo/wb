@@ -19,9 +19,6 @@ class WildBerriesParser {
         this.requestDelay = 2500; // Базовая задержка
         this.maxRetries = 5; // Увеличенное количество попыток
         this.failedRequests = 0; // Счетчик неудачных запросов
-
-        this.runDate = moment().format('YYYY-MM-DD');
-        this.productCards = [];
         this.directory = __dirname;
 
         this.db = new sqlite3.Database(path.join(this.directory, 'wildberries.db'), (err) => {
@@ -94,6 +91,9 @@ class WildBerriesParser {
 
             return response.data;
         } catch (error) {
+            if (error.response.status === 404) {
+                return null;
+            }
             this.failedRequests++;
 
             // Аварийное увеличение задержки при нескольких ошибках подряд
@@ -224,15 +224,6 @@ class WildBerriesParser {
         }
     }
 
-    saveToExcel(fileName) {
-        const workbook = xlsx.utils.book_new();
-        const worksheet = xlsx.utils.json_to_sheet(this.productCards);
-        xlsx.utils.book_append_sheet(workbook, worksheet, 'Товары');
-        const resultPath = path.join(this.directory, `${fileName}_${this.runDate}.xlsx`);
-        xlsx.writeFile(workbook, resultPath);
-        return resultPath;
-    }
-
     async runParser() {
         try {
             const startTime = Date.now();
@@ -241,12 +232,19 @@ class WildBerriesParser {
 
             console.log(`Начинаю парсинг всех категорий (${processedCatalogue.length})...`);
 
-            await this.getAllProductsInCategory(processedCatalogue[0]);
+            process.on('SIGINT', () => {
+                const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
+                fs.appendFileSync(
+                    'parsing_time.log',
+                    `Парсинг завершён за ${totalTime} секунд (прерывание)\n`,
+                );
+                process.exit();
+            });
 
-            // for (const categoryData of processedCatalogue) {
-            //     console.log(`Парсинг категории: ${categoryData.name}`);
-            //     await this.getAllProductsInCategory(categoryData);
-            // }
+            for (const categoryData of processedCatalogue.slice(0, 2)) {
+                console.log(`Парсинг категории: ${categoryData.name}`);
+                await this.getAllProductsInCategory(categoryData);
+            }
 
             console.log(`Готово! Данные сохранены в SQLite.`);
             const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
