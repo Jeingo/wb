@@ -253,7 +253,7 @@ class WildBerriesParser {
     }
 
     async getAllProductsInCategory(categoryData) {
-        for (let page = 1; page <= 100; page++) {
+        for (let page = 1; page <= 5; page++) {
             console.log(`Страница ${page}...`);
             const url = `https://catalog.wb.ru/catalog/${categoryData.shard}/catalog?appType=1&${categoryData.query}&curr=rub&dest=-1257786&page=${page}&sort=popular&spp=24`;
 
@@ -285,7 +285,7 @@ class WildBerriesParser {
                 process.exit();
             });
 
-            for (const categoryData of processedCatalogue.slice(0, 2)) {
+            for (const categoryData of processedCatalogue) {
                 console.log(`Парсинг категории: ${categoryData.name}`);
                 await this.getAllProductsInCategory(categoryData);
             }
