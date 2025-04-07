@@ -6,6 +6,9 @@ const moment = require('moment');
 
 class WildBerriesParser {
     constructor() {
+        this.priceDropThreshold = 0.1; // Порог снижения цены (10%)
+        this.discountIncreaseThreshold = 0.1; // Порог увеличения скидки (10%)
+
         // Расширенный список User-Agent
         this.userAgents = [
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -86,9 +89,54 @@ class WildBerriesParser {
             price INTEGER,
             discount_price INTEGER,
             rating REAL,
-            reviews INTEGER
+            reviews INTEGER,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )`;
         this.db.run(createTableQuery);
+    }
+
+    checkPriceChanges(products) {
+        const changedProducts = [];
+
+        return new Promise((resolve) => {
+            const query = `SELECT price, discount_price FROM products WHERE article = ? ORDER BY created_at DESC LIMIT 1`;
+
+            let checked = 0;
+
+            for (const product of products) {
+                this.db.get(query, [product.article], (err, row) => {
+                    checked++;
+
+                    if (row) {
+                        const priceDrop = (row.price - product.price) / row.price;
+                        const discountIncrease =
+                            (product.discount_price - row.discount_price) / row.discount_price;
+
+                        if (
+                            priceDrop >= this.priceDropThreshold ||
+                            discountIncrease >= this.discountIncreaseThreshold
+                        ) {
+                            changedProducts.push(product);
+                        }
+                    }
+
+                    if (checked === products.length) {
+                        resolve(changedProducts);
+                    }
+                });
+            }
+        });
+    }
+
+    saveChangedProductsToFile(products) {
+        const filePath = path.join(this.directory, 'price_changes.json');
+        const existing = fs.existsSync(filePath)
+            ? JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+            : [];
+
+        const updated = [...existing, ...products];
+
+        fs.writeFileSync(filePath, JSON.stringify(updated, null, 2), 'utf-8');
     }
 
     getRandomDelay(min = 1500, max = 4000) {
@@ -240,6 +288,14 @@ class WildBerriesParser {
 
             const productsOnPage = await this.getProductsOnPage(pageData.data);
             if (productsOnPage.length > 0) {
+                const changedProducts = await this.checkPriceChanges(productsOnPage);
+                if (changedProducts.length > 0) {
+                    this.saveChangedProductsToFile(changedProducts);
+                    console.log(
+                        `Найдено ${changedProducts.length} изменённых товаров. Сохранено в файл.`,
+                    );
+                }
+
                 this.saveToDatabase(productsOnPage);
                 console.log(`Добавлено ${productsOnPage.length} товаров в базу данных`);
                 return false;
@@ -253,7 +309,7 @@ class WildBerriesParser {
     }
 
     async getAllProductsInCategory(categoryData) {
-        for (let page = 1; page <= 5; page++) {
+        for (let page = 1; page <= 2; page++) {
             console.log(`Страница ${page}...`);
             const url = `https://catalog.wb.ru/catalog/${categoryData.shard}/catalog?appType=1&${categoryData.query}&curr=rub&dest=-1257786&page=${page}&sort=popular&spp=24`;
 
