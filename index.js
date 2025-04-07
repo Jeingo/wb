@@ -340,7 +340,7 @@ class WildBerriesParser {
 
             const allNewProducts = [];
 
-            for (const categoryData of processedCatalogue.slice(0, 2)) {
+            for (const categoryData of processedCatalogue) {
                 console.log(`Парсинг категории: ${categoryData.name}`);
                 const products = await this.getAllProductsInCategory(categoryData);
                 allNewProducts.push(...products);
