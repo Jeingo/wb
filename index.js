@@ -6,8 +6,8 @@ const moment = require('moment');
 
 class WildBerriesParser {
     constructor() {
-        this.priceDropThreshold = 0.1; // Порог снижения цены (10%)
-        this.discountIncreaseThreshold = 0.1; // Порог увеличения скидки (10%)
+        this.telegramToken = process.env.TELEGRAM_TOKEN; // 🔁 замени на свой токен
+        this.telegramChatId = process.env.TELEGRAM_CHAT_ID; // 🔁 замени на ID чата или группы
 
         // Расширенный список User-Agent
         this.userAgents = [
@@ -89,54 +89,9 @@ class WildBerriesParser {
             price INTEGER,
             discount_price INTEGER,
             rating REAL,
-            reviews INTEGER,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            reviews INTEGER
         )`;
         this.db.run(createTableQuery);
-    }
-
-    checkPriceChanges(products) {
-        const changedProducts = [];
-
-        return new Promise((resolve) => {
-            const query = `SELECT price, discount_price FROM products WHERE article = ? ORDER BY created_at DESC LIMIT 1`;
-
-            let checked = 0;
-
-            for (const product of products) {
-                this.db.get(query, [product.article], (err, row) => {
-                    checked++;
-
-                    if (row) {
-                        const priceDrop = (row.price - product.price) / row.price;
-                        const discountIncrease =
-                            (product.discount_price - row.discount_price) / row.discount_price;
-
-                        if (
-                            priceDrop >= this.priceDropThreshold ||
-                            discountIncrease >= this.discountIncreaseThreshold
-                        ) {
-                            changedProducts.push(product);
-                        }
-                    }
-
-                    if (checked === products.length) {
-                        resolve(changedProducts);
-                    }
-                });
-            }
-        });
-    }
-
-    saveChangedProductsToFile(products) {
-        const filePath = path.join(this.directory, 'price_changes.json');
-        const existing = fs.existsSync(filePath)
-            ? JSON.parse(fs.readFileSync(filePath, 'utf-8'))
-            : [];
-
-        const updated = [...existing, ...products];
-
-        fs.writeFileSync(filePath, JSON.stringify(updated, null, 2), 'utf-8');
     }
 
     getRandomDelay(min = 1500, max = 4000) {
@@ -281,47 +236,69 @@ class WildBerriesParser {
         });
     }
 
-    async addDataFromPage(url) {
-        try {
-            const pageData = await this.makeRequest(url);
-            if (!pageData) return true;
-
-            const productsOnPage = await this.getProductsOnPage(pageData.data);
-            if (productsOnPage.length > 0) {
-                const changedProducts = await this.checkPriceChanges(productsOnPage);
-                if (changedProducts.length > 0) {
-                    this.saveChangedProductsToFile(changedProducts);
-                    console.log(
-                        `Найдено ${changedProducts.length} изменённых товаров. Сохранено в файл.`,
-                    );
-                }
-
-                this.saveToDatabase(productsOnPage);
-                console.log(`Добавлено ${productsOnPage.length} товаров в базу данных`);
-                return false;
-            }
-            console.log('Товары на странице отсутствуют');
-            return true;
-        } catch (error) {
-            console.error(`Ошибка при обработке страницы: ${error.message}`);
-            return true;
-        }
-    }
-
     async getAllProductsInCategory(categoryData) {
-        for (let page = 1; page <= 2; page++) {
-            console.log(`Страница ${page}...`);
+        const collected = [];
+
+        for (let page = 1; page < 2; page++) {
+            console.log(`Парсинг страницы ${page}...`);
             const url = `https://catalog.wb.ru/catalog/${categoryData.shard}/catalog?appType=1&${categoryData.query}&curr=rub&dest=-1257786&page=${page}&sort=popular&spp=24`;
 
-            if (await this.addDataFromPage(url)) {
-                console.log('Достигнут конец категории');
-                break;
+            const pageData = await this.makeRequest(url);
+            if (pageData && pageData.data && pageData.data.products) {
+                const products = await this.getProductsOnPage(pageData.data);
+                collected.push(...products);
             }
 
-            // Динамическая задержка с прогрессией
-            const dynamicDelay = Math.min(this.requestDelay + page * 100, 8000);
-            await new Promise((resolve) => setTimeout(resolve, dynamicDelay));
+            const delay = Math.min(this.requestDelay + page * 100, 8000);
+            await new Promise((resolve) => setTimeout(resolve, delay));
         }
+
+        return collected;
+    }
+
+    async getOldProductsFromDB() {
+        return new Promise((resolve, reject) => {
+            const query = 'SELECT * FROM products';
+            this.db.all(query, [], (err, rows) => {
+                if (err) return reject(err);
+                resolve(rows);
+            });
+        });
+    }
+
+    compareProducts(oldProducts, newProducts) {
+        const changed = [];
+
+        const oldMap = new Map();
+        for (const oldProduct of oldProducts) {
+            oldMap.set(oldProduct.article, oldProduct);
+        }
+
+        for (const newProduct of newProducts) {
+            const old = oldMap.get(newProduct.article);
+            if (!old) continue;
+
+            const priceChanged = old.price !== newProduct.price;
+            const discountChanged = old.discount_price !== newProduct.discount_price;
+
+            if (priceChanged || discountChanged) {
+                changed.push({
+                    old: old,
+                    new: newProduct,
+                });
+            }
+        }
+
+        return changed;
+    }
+
+    clearOldProductsFromDB() {
+        return new Promise((resolve, reject) => {
+            this.db.run('DELETE FROM products', [], function (err) {
+                if (err) return reject(err);
+                resolve();
+            });
+        });
     }
 
     async runParser() {
@@ -332,28 +309,69 @@ class WildBerriesParser {
 
             console.log(`Начинаю парсинг всех категорий (${processedCatalogue.length})...`);
 
-            process.on('SIGINT', () => {
-                const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
-                fs.appendFileSync(
-                    'parsing_time.log',
-                    `Парсинг завершён за ${totalTime} секунд (прерывание)\n`,
-                );
-                process.exit();
-            });
+            const allNewProducts = [];
 
-            for (const categoryData of processedCatalogue) {
+            for (const categoryData of processedCatalogue.slice(0, 2)) {
                 console.log(`Парсинг категории: ${categoryData.name}`);
-                await this.getAllProductsInCategory(categoryData);
+                const products = await this.getAllProductsInCategory(categoryData);
+                allNewProducts.push(...products);
             }
 
-            console.log(`Готово! Данные сохранены в SQLite.`);
+            const oldProducts = await this.getOldProductsFromDB();
+            const changedProducts = this.compareProducts(oldProducts, allNewProducts);
+
+            if (changedProducts.length > 0) {
+                console.log(`Обнаружено изменений: ${changedProducts.length}`);
+                // Тут отправка в Telegram
+                await this.sendToTelegram(changedProducts);
+            }
+
+            await this.clearOldProductsFromDB();
+            this.saveToDatabase(allNewProducts);
+
             const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
             fs.appendFileSync('parsing_time.log', `Парсинг завершён за ${totalTime} секунд\n`);
+            console.log('Готово! Данные обновлены.');
         } catch (error) {
             console.error(`Фатальная ошибка: ${error.message}`);
         } finally {
             this.db.close();
             process.exit();
+        }
+    }
+
+    async sendToTelegram(changedProducts) {
+        const token = this.telegramToken;
+        const chatId = this.telegramChatId;
+        const url = `https://api.telegram.org/bot${token}/sendMessage`;
+
+        for (const { old, new: updated } of changedProducts) {
+            const diffPrice = old.discount_price !== updated.discount_price;
+            const diffText = diffPrice
+                ? `💸 *Цена изменилась:*\nБыло: ${old.discount_price}₽\nСтало: ${updated.discount_price}₽`
+                : `📉 *Цена не изменилась*, но возможно другая скидка.`;
+
+            const message = `
+🛍 *${updated.name}*
+🏷 *Бренд:* ${updated.brand}
+🆔 *Артикул:* ${updated.article}
+⭐️ *Рейтинг:* ${updated.rating} (${updated.reviews} отзывов)
+${diffText}
+🔗 [Смотреть товар](${updated.link})
+        `.trim();
+
+            try {
+                await axios.post(url, {
+                    chat_id: chatId,
+                    text: message,
+                    parse_mode: 'Markdown',
+                    disable_web_page_preview: false,
+                });
+
+                await new Promise((res) => setTimeout(res, 800)); // Задержка между отправками
+            } catch (err) {
+                console.error(`Ошибка при отправке в Telegram: ${err.message}`);
+            }
         }
     }
 }
