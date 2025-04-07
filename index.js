@@ -88,7 +88,7 @@ class WildBerriesParser {
             brand_id INTEGER,
             price INTEGER,
             discount_price INTEGER,
-            rating REAL,
+            rating INTEGER,
             reviews INTEGER
         )`;
         this.db.run(createTableQuery);
@@ -215,24 +215,53 @@ class WildBerriesParser {
     }
 
     saveToDatabase(products) {
-        const insertQuery = `INSERT INTO products (link, article, name, brand, brand_id, price, discount_price, rating, reviews)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-        this.db.serialize(() => {
-            const stmt = this.db.prepare(insertQuery);
-            for (const product of products) {
-                stmt.run(
-                    product.link,
-                    product.article,
-                    product.name,
-                    product.brand,
-                    product.brand_id,
-                    product.price,
-                    product.discount_price,
-                    product.rating,
-                    product.reviews,
-                );
-            }
-            stmt.finalize();
+        return new Promise((resolve, reject) => {
+            const insertQuery =
+                'INSERT INTO products (link, article, name, brand, brand_id, price, discount_price, rating, reviews) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)';
+
+            this.db.serialize(() => {
+                this.db.run('BEGIN TRANSACTION');
+
+                const stmt = this.db.prepare(insertQuery);
+
+                for (const product of products) {
+                    stmt.run(
+                        product.link,
+                        product.article,
+                        product.name,
+                        product.brand,
+                        product.brand_id,
+                        product.price,
+                        product.discount_price,
+                        product.rating,
+                        product.reviews,
+                        (err) => {
+                            if (err) {
+                                console.error(
+                                    `❌ Ошибка вставки товара ${product.article}: ${err.message}`,
+                                );
+                            }
+                        },
+                    );
+                }
+
+                stmt.finalize((err) => {
+                    if (err) {
+                        console.error('❌ Ошибка в finalize:', err.message);
+                        return reject(err);
+                    }
+
+                    this.db.run('COMMIT', (commitErr) => {
+                        if (commitErr) {
+                            console.error('❌ Ошибка при COMMIT:', commitErr.message);
+                            return reject(commitErr);
+                        }
+
+                        console.log('✅ Все товары вставлены и COMMIT выполнен');
+                        resolve();
+                    });
+                });
+            });
         });
     }
 
@@ -327,7 +356,7 @@ class WildBerriesParser {
             }
 
             await this.clearOldProductsFromDB();
-            this.saveToDatabase(allNewProducts);
+            await this.saveToDatabase(allNewProducts);
 
             const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
             fs.appendFileSync('parsing_time.log', `Парсинг завершён за ${totalTime} секунд\n`);
@@ -346,17 +375,22 @@ class WildBerriesParser {
         const url = `https://api.telegram.org/bot${token}/sendMessage`;
 
         for (const { old, new: updated } of changedProducts) {
-            const diffPrice = old.discount_price !== updated.discount_price;
-            const diffText = diffPrice
-                ? `💸 *Цена изменилась:*\nБыло: ${old.discount_price}₽\nСтало: ${updated.discount_price}₽`
-                : `📉 *Цена не изменилась*, но возможно другая скидка.`;
+            const diffPrice = old.price !== updated.price;
+            const diffDiscountPrice = old.discount_price !== updated.discount_price;
+            const diffPriceText = diffPrice
+                ? `💸 *Цена изменилась:*\nБыло: ${old.price}₽\nСтало: ${updated.price}₽`
+                : '';
+            const diffDiscountPriceText = diffDiscountPrice
+                ? `💸 *Скидка изменилась:*\nБыло: ${old.discount_price}₽\nСтало: ${updated.discount_price}₽`
+                : '';
 
             const message = `
 🛍 *${updated.name}*
 🏷 *Бренд:* ${updated.brand}
 🆔 *Артикул:* ${updated.article}
 ⭐️ *Рейтинг:* ${updated.rating} (${updated.reviews} отзывов)
-${diffText}
+${diffPriceText}\n
+${diffDiscountPriceText}
 🔗 [Смотреть товар](${updated.link})
         `.trim();
 
@@ -368,7 +402,7 @@ ${diffText}
                     disable_web_page_preview: false,
                 });
 
-                await new Promise((res) => setTimeout(res, 800)); // Задержка между отправками
+                await new Promise((res) => setTimeout(res, 400));
             } catch (err) {
                 console.error(`Ошибка при отправке в Telegram: ${err.message}`);
             }
