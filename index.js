@@ -374,9 +374,12 @@ class WildBerriesParser {
         const chatId = this.telegramChatId;
         const url = `https://api.telegram.org/bot${token}/sendMessage`;
 
+        let messageContent = '';
+
         for (const { old, new: updated } of changedProducts) {
             const diffPrice = old.price !== updated.price;
             const diffDiscountPrice = old.discount_price !== updated.discount_price;
+
             const diffPriceText = diffPrice
                 ? `💸 *Цена изменилась:*\nБыло: ${old.price}₽\nСтало: ${updated.price}₽`
                 : '';
@@ -384,7 +387,7 @@ class WildBerriesParser {
                 ? `💸 *Скидка изменилась:*\nБыло: ${old.discount_price}₽\nСтало: ${updated.discount_price}₽`
                 : '';
 
-            const message = `
+            messageContent += `
 🛍 *${updated.name}*
 🏷 *Бренд:* ${updated.brand}
 🆔 *Артикул:* ${updated.article}
@@ -392,20 +395,24 @@ class WildBerriesParser {
 ${diffPriceText}\n
 ${diffDiscountPriceText}
 🔗 [Смотреть товар](${updated.link})
+        
+-----------------------------------------\n
         `.trim();
+        }
 
-            try {
-                await axios.post(url, {
-                    chat_id: chatId,
-                    text: message,
-                    parse_mode: 'Markdown',
-                    disable_web_page_preview: false,
-                });
+        const message = `Вот все изменённые товары:\n\n${messageContent}`;
 
-                await new Promise((res) => setTimeout(res, 400));
-            } catch (err) {
-                console.error(`Ошибка при отправке в Telegram: ${err.message}`);
-            }
+        try {
+            await axios.post(url, {
+                chat_id: chatId,
+                text: message,
+                parse_mode: 'Markdown',
+                disable_web_page_preview: false,
+            });
+
+            console.log('Сообщение отправлено в Telegram.');
+        } catch (err) {
+            console.error(`Ошибка при отправке в Telegram: ${err.message}`);
         }
     }
 }
