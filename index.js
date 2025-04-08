@@ -9,6 +9,8 @@ class WildBerriesParser {
         this.telegramToken = process.env.TELEGRAM_TOKEN; // 🔁 замени на свой токен
         this.telegramChatId = process.env.TELEGRAM_CHAT_ID; // 🔁 замени на ID чата или группы
 
+        this.diffProcent = 0.8;
+
         // Расширенный список User-Agent
         this.userAgents = [
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -304,16 +306,16 @@ class WildBerriesParser {
         }
 
         for (const newProduct of newProducts) {
-            const old = oldMap.get(newProduct.article);
-            if (!old) continue;
+            const oldProduct = oldMap.get(newProduct.article);
+            if (!oldProduct) continue;
 
-            const priceChanged = old.price !== newProduct.price;
-            const discountChanged = old.discount_price !== newProduct.discount_price;
+            const diffPrice =
+                newProduct.discount_price <= oldProduct.discount_price * this.diffProcent;
 
-            if (priceChanged || discountChanged) {
+            if (diffPrice) {
                 changed.push({
-                    old: old,
-                    new: newProduct,
+                    oldProduct: oldProduct,
+                    newProduct: newProduct,
                 });
             }
         }
@@ -358,8 +360,9 @@ class WildBerriesParser {
             await this.clearOldProductsFromDB();
             await this.saveToDatabase(allNewProducts);
 
-            const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
-            fs.appendFileSync('parsing_time.log', `Парсинг завершён за ${totalTime} секунд\n`);
+            const totalTime = ((Date.now() - startTime) / (1000 * 60)).toFixed(2);
+            fs.appendFileSync('parsing_time.log', `Парсинг завершён за ${totalTime} минут\n`);
+
             console.log('Готово! Данные обновлены.');
         } catch (error) {
             console.error(`Фатальная ошибка: ${error.message}`);
@@ -376,31 +379,30 @@ class WildBerriesParser {
 
         let messageContent = '';
 
-        for (const { old, new: updated } of changedProducts) {
-            const diffPrice = old.price !== updated.price;
-            const diffDiscountPrice = old.discount_price !== updated.discount_price;
+        for (const { oldProduct, newProduct } of changedProducts) {
+            const diffPrice =
+                newProduct.discount_price <= oldProduct.discount_price * this.diffProcent;
+
+            const priceDropPercent =
+                ((oldProduct.discount_price - newProduct.discount_price) /
+                    oldProduct.discount_price) *
+                100;
 
             const diffPriceText = diffPrice
-                ? `💸 *Цена изменилась:*\nБыло: ${old.price}₽\nСтало: ${updated.price}₽`
-                : '';
-            const diffDiscountPriceText = diffDiscountPrice
-                ? `💸 *Скидка изменилась:*\nБыло: ${old.discount_price}₽\nСтало: ${updated.discount_price}₽`
+                ? `💸 *Цена умньшилась на ${priceDropPercent.toFixed(0)}%:*\nБыло: ${oldProduct.discount_price}₽\nСтало: ${newProduct.discount_price}₽`
                 : '';
 
             messageContent += `
-🛍 *${updated.name}*
-🏷 *Бренд:* ${updated.brand}
-🆔 *Артикул:* ${updated.article}
-⭐️ *Рейтинг:* ${updated.rating} (${updated.reviews} отзывов)
+🛍 *${newProduct.name}*
+🆔 *Артикул:* ${newProduct.article}
+⭐️ *Рейтинг:* ${newProduct.rating} (${newProduct.reviews} отзывов)
 ${diffPriceText}\n
-${diffDiscountPriceText}
-🔗 [Смотреть товар](${updated.link})
-        
------------------------------------------\n
-        `.trim();
+🔗 [Ссылка на товар](${oldProduct.link})
+
+-----------------------------------------\n`;
         }
 
-        let message = `Вот все изменённые товары:\n\n${messageContent}`;
+        let message = `Товары, которые стали дешевле:\n\n${messageContent}`;
 
         const maxMessageLength = 3800; // максимальная длина сообщения
         let messageParts = [];
