@@ -133,8 +133,8 @@ class WildBerriesParser {
             }
 
             // Случайная задержка между запросами
-            const delay = this.getRandomDelay();
-            await new Promise((resolve) => setTimeout(resolve, delay));
+            //const delay = this.getRandomDelay();
+            //await new Promise((resolve) => setTimeout(resolve, delay));
 
             return response.data;
         } catch (error) {
@@ -278,8 +278,8 @@ class WildBerriesParser {
                 collected.push(...products);
             }
 
-            const delay = Math.min(this.requestDelay + page * 100, 8000);
-            await new Promise((resolve) => setTimeout(resolve, delay));
+            //const delay = Math.min(this.requestDelay + page * 100, 8000);
+            //await new Promise((resolve) => setTimeout(resolve, delay));
         }
 
         return collected;
@@ -400,17 +400,37 @@ ${diffDiscountPriceText}
         `.trim();
         }
 
-        const message = `Вот все изменённые товары:\n\n${messageContent}`;
+        let message = `Вот все изменённые товары:\n\n${messageContent}`;
 
+        const maxMessageLength = 3800; // максимальная длина сообщения
+        let messageParts = [];
+        let currentMessage = '';
+
+        // Разбиваем сообщение на части по 3800 символов
+        while (message.length > maxMessageLength) {
+            const spaceIndex = message.lastIndexOf('\n', maxMessageLength);
+            currentMessage = message.substring(0, spaceIndex);
+            messageParts.push(currentMessage);
+            message = message.substring(spaceIndex + 1);
+        }
+
+        // Добавляем последнюю часть сообщения
+        if (message.length > 0) {
+            messageParts.push(message);
+        }
+
+        // Отправляем каждую часть
         try {
-            await axios.post(url, {
-                chat_id: chatId,
-                text: message,
-                parse_mode: 'Markdown',
-                disable_web_page_preview: false,
-            });
+            for (let i = 0; i < messageParts.length; i++) {
+                await axios.post(url, {
+                    chat_id: chatId,
+                    text: messageParts[i],
+                    parse_mode: 'Markdown',
+                    disable_web_page_preview: false,
+                });
+            }
 
-            console.log('Сообщение отправлено в Telegram.');
+            console.log('Сообщения отправлены в Telegram.');
         } catch (err) {
             console.error(`Ошибка при отправке в Telegram: ${err.message}`);
         }
