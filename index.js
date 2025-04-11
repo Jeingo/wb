@@ -3,6 +3,7 @@ const axios = require('axios');
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
 const moment = require('moment');
+const cron = require('node-cron');
 
 class WildBerriesParser {
     constructor() {
@@ -379,7 +380,15 @@ class WildBerriesParser {
 
         let messageContent = '';
 
-        for (const { oldProduct, newProduct } of changedProducts) {
+        const uniqueProducts = new Map();
+        for (const pair of changedProducts) {
+            const article = pair.newProduct.article;
+            if (!uniqueProducts.has(article)) {
+                uniqueProducts.set(article, pair);
+            }
+        }
+
+        for (const { oldProduct, newProduct } of uniqueProducts.values()) {
             const diffPrice =
                 newProduct.discount_price <= oldProduct.discount_price * this.diffProcent;
 
@@ -398,6 +407,7 @@ class WildBerriesParser {
 ⭐️ *Рейтинг:* ${newProduct.rating} (${newProduct.reviews} отзывов)
 ${diffPriceText}\n
 🔗 [Ссылка на товар](${oldProduct.link})
+Старое название ${oldProduct.name}
 
 -----------------------------------------\n`;
         }
@@ -439,7 +449,14 @@ ${diffPriceText}\n
     }
 }
 
-(async () => {
+cron.schedule('0 * * * *', async () => {
+    console.log('Запуск парсера по крону:', new Date().toISOString());
     const parser = new WildBerriesParser();
     await parser.runParser();
-})();
+});
+
+// (async () => {
+//     console.log('Первый запуск парсера:', new Date().toISOString());
+//     const parser = new WildBerriesParser();
+//     await parser.runParser();
+// })();
