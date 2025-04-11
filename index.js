@@ -9,7 +9,7 @@ class WildBerriesParser {
         this.telegramToken = process.env.TELEGRAM_TOKEN; // 🔁 замени на свой токен
         this.telegramChatId = process.env.TELEGRAM_CHAT_ID; // 🔁 замени на ID чата или группы
 
-        this.diffProcent = 0.7;
+        this.diffProcent = 0.5;
 
         // Расширенный список User-Agent
         this.userAgents = [
