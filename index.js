@@ -373,6 +373,15 @@ class WildBerriesParser {
         }
     }
 
+    getReviewSuffix(count) {
+        const lastDigit = count % 10;
+        const lastTwoDigits = count % 100;
+        if (lastTwoDigits >= 11 && lastTwoDigits <= 14) return 'ов';
+        if (lastDigit === 1) return '';
+        if (lastDigit >= 2 && lastDigit <= 4) return 'а';
+        return 'ов';
+    }
+
     async sendToTelegram(changedProducts) {
         const token = this.telegramToken;
         const chatId = this.telegramChatId;
@@ -398,19 +407,19 @@ class WildBerriesParser {
                 100;
 
             const diffPriceText = diffPrice
-                ? `💸 *Цена умньшилась на ${priceDropPercent.toFixed(0)}%:*\nБыло: ${oldProduct.discount_price}₽\nСтало: ${newProduct.discount_price}₽`
+                ? `💸 **Скидка: −${priceDropPercent.toFixed(0)}%**\n~~${oldProduct.discount_price}₽~~ → **${newProduct.discount_price}₽**`
                 : '';
 
             messageContent += `
-🛍 *${newProduct.name}*
-🆔 *Артикул:* ${newProduct.article}
-⭐️ *Рейтинг:* ${newProduct.rating} (${newProduct.reviews} отзывов)
-${diffPriceText}\n
-🔗 [Ссылка на товар](${oldProduct.link})
-Старое название ${oldProduct.name}
+**🛍 ${newProduct.name}**  
+🆔 Артикул: \`${newProduct.article}\`  
+⭐️ Рейтинг: **${newProduct.rating}** (${newProduct.reviews} отзыв${this.getReviewSuffix(newProduct.reviews)})  
+${diffPriceText}  
+🔗 [Открыть на Wildberries](${oldProduct.link})
 
------------------------------------------\n`;
+---`;
         }
+        string;
 
         let message = `Товары, которые стали дешевле:\n\n${messageContent}`;
 
