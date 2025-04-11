@@ -387,8 +387,6 @@ class WildBerriesParser {
         const chatId = this.telegramChatId;
         const url = `https://api.telegram.org/bot${token}/sendMessage`;
 
-        let messageContent = '';
-
         const uniqueProducts = new Map();
         for (const pair of changedProducts) {
             const article = pair.newProduct.article;
@@ -397,47 +395,43 @@ class WildBerriesParser {
             }
         }
 
-        for (const { oldProduct, newProduct } of uniqueProducts.values()) {
-            const diffPrice =
-                newProduct.discount_price <= oldProduct.discount_price * this.diffProcent;
+        const productMessages = [];
+        const separator = '\n---\n';
 
+        for (const { oldProduct, newProduct } of uniqueProducts.values()) {
             const priceDropPercent =
                 ((oldProduct.discount_price - newProduct.discount_price) /
                     oldProduct.discount_price) *
                 100;
 
-            const diffPriceText = diffPrice
-                ? `💸 **Скидка: −${priceDropPercent.toFixed(0)}%**\n~~${oldProduct.discount_price}₽~~ → **${newProduct.discount_price}₽**`
-                : '';
-
-            messageContent += `
+            const productMessage = `
 **🛍 ${newProduct.name}**  
 🆔 Артикул: \`${newProduct.article}\`  
 ⭐️ Рейтинг: **${newProduct.rating}** (${newProduct.reviews} отзыв${this.getReviewSuffix(newProduct.reviews)})  
-${diffPriceText}  
+💸 **Скидка: −${priceDropPercent.toFixed(0)}%**\n~~${oldProduct.discount_price}₽~~ → **${newProduct.discount_price}₽**
 🔗 [Открыть на Wildberries](${oldProduct.link})
 
 ---`;
+            productMessages.push(productMessage);
         }
-        string;
-
-        let message = `Товары, которые стали дешевле:\n\n${messageContent}`;
 
         const maxMessageLength = 3800; // максимальная длина сообщения
         let messageParts = [];
         let currentMessage = '';
 
-        // Разбиваем сообщение на части по 3800 символов
-        while (message.length > maxMessageLength) {
-            const spaceIndex = message.lastIndexOf('\n', maxMessageLength);
-            currentMessage = message.substring(0, spaceIndex);
-            messageParts.push(currentMessage);
-            message = message.substring(spaceIndex + 1);
+        for (const part of productMessages) {
+            // +separator.length чтобы учитывать разделитель между товарами
+            if ((currentMessage + separator + part).length > maxMessageLength) {
+                messageParts.push(currentMessage.trim());
+                currentMessage = part;
+            } else {
+                currentMessage += (currentMessage ? separator : '') + part;
+            }
         }
 
-        // Добавляем последнюю часть сообщения
-        if (message.length > 0) {
-            messageParts.push(message);
+        // Добавляем последний блок
+        if (currentMessage) {
+            messageParts.push(currentMessage.trim());
         }
 
         // Отправляем каждую часть
@@ -476,8 +470,8 @@ const task = cron.schedule(
 
 task.start();
 
-// (async () => {
-//     console.log('Первый запуск парсера:', new Date().toISOString());
-//     const parser = new WildBerriesParser();
-//     await parser.runParser();
-// })();
+(async () => {
+    console.log('Первый запуск парсера:', new Date().toISOString());
+    const parser = new WildBerriesParser();
+    await parser.runParser();
+})();
