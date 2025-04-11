@@ -449,13 +449,23 @@ ${diffPriceText}\n
     }
 }
 
-cron.schedule('0 * * * *', async () => {
-    console.log('Запуск парсера по крону:', new Date().toISOString());
-    const parser = new WildBerriesParser();
-    await parser.runParser().catch((e) => {
-        console.error(e);
-    });
-});
+const task = cron.schedule(
+    '*/1 * * * *',
+    async () => {
+        console.log('Запуск парсера по крону:', new Date().toISOString());
+        const parser = new WildBerriesParser();
+        try {
+            await parser.runParser();
+        } catch (e) {
+            console.error(e);
+        }
+    },
+    {
+        scheduled: true, // по умолчанию, но можно указать явно
+    },
+);
+
+task.start();
 
 // (async () => {
 //     console.log('Первый запуск парсера:', new Date().toISOString());
