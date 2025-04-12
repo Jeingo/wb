@@ -472,3 +472,5 @@ const task = cron.schedule(
 // })();
 
 task.start();
+
+console.log('start app');
