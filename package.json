@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "license": "MIT",
+  "module": "commonjs",
   "scripts": {
     "start": "node --env-file=.env index.js"
   },
