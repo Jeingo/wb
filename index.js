@@ -405,7 +405,7 @@ class WildBerriesParser {
 **🛍 ${newProduct.name}**  
 🆔 Артикул: \`${newProduct.article}\`  
 ⭐️ Рейтинг: **${newProduct.rating}** (${newProduct.reviews} отзыв${this.getReviewSuffix(newProduct.reviews)})  
-💸 **Скидка: −${priceDropPercent.toFixed(0)}%**\n~~${oldProduct.discount_price}₽~~ → **${newProduct.discount_price}₽**
+💸 **Скидка: ${priceDropPercent.toFixed(0)}%**\n${oldProduct.discount_price}₽ → **${newProduct.discount_price}₽**
 🔗 [Открыть на Wildberries](${oldProduct.link})
 
 ---`;
@@ -465,12 +465,12 @@ const task = cron.schedule(
     },
 );
 
-// (async () => {
-//     console.log('Первый запуск парсера:', new Date().toISOString());
-//     const parser = new WildBerriesParser();
-//     await parser.runParser();
-// })();
-
-task.start();
+(async () => {
+    console.log('Первый запуск парсера:', new Date().toISOString());
+    const parser = new WildBerriesParser();
+    await parser.runParser();
+})();
+//
+// task.start();
 
 console.log('start app');
