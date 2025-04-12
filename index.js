@@ -465,12 +465,12 @@ const task = cron.schedule(
     },
 );
 
-(async () => {
-    console.log('Первый запуск парсера:', new Date().toISOString());
-    const parser = new WildBerriesParser();
-    await parser.runParser();
-})();
+// (async () => {
+//     console.log('Первый запуск парсера:', new Date().toISOString());
+//     const parser = new WildBerriesParser();
+//     await parser.runParser();
+// })();
 //
-// task.start();
+task.start();
 
 console.log('start app');
