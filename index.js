@@ -268,7 +268,7 @@ class WildBerriesParser {
     async getAllProductsInCategory(categoryData) {
         const collected = [];
 
-        for (let page = 1; page < 2; page++) {
+        for (let page = 1; page < 3; page++) {
             console.log(`Парсинг страницы ${page}...`);
             const url = `https://catalog.wb.ru/catalog/${categoryData.shard}/catalog?appType=1&${categoryData.query}&curr=rub&dest=-1257786&page=${page}&sort=popular&spp=24`;
 
@@ -403,12 +403,9 @@ class WildBerriesParser {
 
             const productMessage = `
 **🛍 ${newProduct.name}**  
-🆔 Артикул: \`${newProduct.article}\`  
 ⭐️ Рейтинг: **${newProduct.rating}** (${newProduct.reviews} отзыв${this.getReviewSuffix(newProduct.reviews)})  
-💸 **Скидка: ${priceDropPercent.toFixed(0)}%**\n${oldProduct.discount_price}₽ → **${newProduct.discount_price}₽**
-🔗 [Открыть на Wildberries](${oldProduct.link})
-
----`;
+💸 **Цена уменьшилась на: ${priceDropPercent.toFixed(0)}%**\n${oldProduct.discount_price}₽ → **${newProduct.discount_price}₽**
+🔗 [Открыть на Wildberries](${oldProduct.link})`;
             productMessages.push(productMessage);
         }
 
