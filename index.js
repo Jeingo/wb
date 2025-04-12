@@ -7,9 +7,6 @@ const cron = require('node-cron');
 
 class WildBerriesParser {
     constructor() {
-        this.telegramToken = process.env.TELEGRAM_TOKEN; // 🔁 замени на свой токен
-        this.telegramChatId = process.env.TELEGRAM_CHAT_ID; // 🔁 замени на ID чата или группы
-
         this.diffProcent = 0.5;
 
         // Расширенный список User-Agent
@@ -129,7 +126,7 @@ class WildBerriesParser {
             this.failedRequests = 0;
 
             // Адаптивная задержка при 429
-            if (response.status === 429) {
+            if (response?.status === 429) {
                 this.requestDelay = Math.min(this.requestDelay + 1000, 10000); // Макс 10 сек
                 console.warn(`[429] Увеличиваю задержку до ${this.requestDelay}мс`);
                 throw new Error('Too Many Requests');
@@ -141,7 +138,7 @@ class WildBerriesParser {
 
             return response.data;
         } catch (error) {
-            if (error.response.status === 404) {
+            if (error.response?.status === 404) {
                 return null;
             }
             this.failedRequests++;
@@ -383,8 +380,8 @@ class WildBerriesParser {
     }
 
     async sendToTelegram(changedProducts) {
-        const token = this.telegramToken;
-        const chatId = this.telegramChatId;
+        const token = process.env.TELEGRAM_TOKEN;
+        const chatId = process.env.TELEGRAM_CHAT_ID;
         const url = `https://api.telegram.org/bot${token}/sendMessage`;
 
         const uniqueProducts = new Map();

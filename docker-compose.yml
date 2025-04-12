@@ -3,7 +3,7 @@ version: '3.8'
 services:
   parser:
     build: .
-    container_name: wildberries_parser
+    container_name: wb_parser
     restart: always
     volumes:
       - .:/app

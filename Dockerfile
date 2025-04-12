@@ -1,16 +1,16 @@
-FROM node:20
+FROM node:22-alpine
 
 # Установим рабочую директорию
 WORKDIR /app
 
 # Копируем зависимости
-COPY package*.json ./
+COPY package.json yarn.lock ./
 
 # Устанавливаем зависимости
-RUN npm install
+RUN yarn install
 
 # Копируем остальной код
 COPY . .
 
 # Запуск приложения
-CMD ["npm", "start"]
+CMD ["yarn", "start"]
