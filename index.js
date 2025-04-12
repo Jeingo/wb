@@ -441,7 +441,7 @@ class WildBerriesParser {
                     chat_id: chatId,
                     text: messageParts[i],
                     parse_mode: 'Markdown',
-                    disable_web_page_preview: false,
+                    disable_web_page_preview: true,
                 });
             }
 
@@ -468,10 +468,10 @@ const task = cron.schedule(
     },
 );
 
-task.start();
+// (async () => {
+//     console.log('Первый запуск парсера:', new Date().toISOString());
+//     const parser = new WildBerriesParser();
+//     await parser.runParser();
+// })();
 
-(async () => {
-    console.log('Первый запуск парсера:', new Date().toISOString());
-    const parser = new WildBerriesParser();
-    await parser.runParser();
-})();
+task.start();
