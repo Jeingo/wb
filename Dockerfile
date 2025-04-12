@@ -4,13 +4,13 @@ FROM node:22-alpine
 WORKDIR /app
 
 # Копируем зависимости
-COPY package.json yarn.lock ./
+COPY package.json ./
 
 # Устанавливаем зависимости
-RUN yarn install
+RUN npm install
 
 # Копируем остальной код
 COPY . .
 
 # Запуск приложения
-CMD ["yarn", "start"]
+CMD ["npm", "start"]
