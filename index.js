@@ -409,39 +409,34 @@ class WildBerriesParser {
             productMessages.push(productMessage);
         }
 
-        const maxMessageLength = 3800; // максимальная длина сообщения
-        let messageParts = [];
-        let currentMessage = '';
+        // Разделяем на блоки по 10 товаров
+        const chunkSize = 10;
+        const chunks = [];
 
-        for (const part of productMessages) {
-            // +separator.length чтобы учитывать разделитель между товарами
-            if ((currentMessage + separator + part).length > maxMessageLength) {
-                messageParts.push(currentMessage.trim());
-                currentMessage = part;
-            } else {
-                currentMessage += (currentMessage ? separator : '') + part;
-            }
+        for (let i = 0; i < productMessages.length; i += chunkSize) {
+            const chunk = productMessages.slice(i, i + chunkSize);
+            chunks.push(chunk);
         }
 
-        // Добавляем последний блок
-        if (currentMessage) {
-            messageParts.push(currentMessage.trim());
-        }
-
-        // Отправляем каждую часть
         try {
-            for (let i = 0; i < messageParts.length; i++) {
+            for (let i = 0; i < chunks.length; i++) {
+                const chunk = chunks[i];
+                const messageText = chunk.join(separator);
+
+                console.log(`📦 Отправка блока ${i + 1} с ${chunk.length} товарами.`);
+
                 await axios.post(url, {
                     chat_id: chatId,
-                    text: messageParts[i],
+                    text: messageText,
                     parse_mode: 'Markdown',
                     disable_web_page_preview: true,
                 });
             }
 
-            console.log('Сообщения отправлены в Telegram.');
+            console.log('✅ Все сообщения успешно отправлены в Telegram.');
         } catch (err) {
-            console.error(`Ошибка при отправке в Telegram: ${err.message}`);
+            console.error('❌ Ошибка при отправке в Telegram:');
+            console.error(err.response?.data || err.message || err);
         }
     }
 }
